@@ -60,6 +60,34 @@ static struct wlr_seat_client *seat_client_from_keyboard_resource(
 }
 
 static void keyboard_handle_resource_destroy(struct wl_resource *resource) {
+	wlr_log(WLR_ERROR, "DESTROY!!!");
+	struct wlr_seat_client *seat_client =
+		seat_client_from_keyboard_resource(resource);
+	if (seat_client) {
+		wlr_log(WLR_ERROR, "CLIENT OK!!!");
+		struct wlr_seat_client *focused_client =
+			seat_client->seat->keyboard_state.focused_client;
+		struct wlr_surface *focused_surface =
+			seat_client->seat->keyboard_state.focused_surface;
+
+		// send a leave event the focused surface
+		if (focused_client && focused_surface) {
+			uint32_t serial = wlr_seat_client_next_serial(focused_client);
+			uint32_t id = wl_resource_get_id(resource);
+			struct wl_resource *other_resource;
+			wl_resource_for_each(other_resource, &focused_client->keyboards) {
+				if (wl_resource_get_id(other_resource) == id) {
+					if (seat_client_from_keyboard_resource(resource) == NULL) {
+						continue;
+					}
+					wlr_log(WLR_ERROR, "LEAVE!!!");
+					wl_keyboard_send_leave(resource, serial, focused_surface->resource);
+				}
+			}
+		} else {
+			wlr_log(WLR_ERROR, "FOCUS NULL!!!");
+		}
+	}
 	wl_list_remove(wl_resource_get_link(resource));
 	seat_client_destroy_keyboard(resource);
 }
@@ -409,8 +437,29 @@ void seat_client_create_keyboard(struct wlr_seat_client *seat_client,
 	seat_client_send_keymap(seat_client, keyboard);
 	seat_client_send_repeat_info(seat_client, keyboard);
 
-	// TODO possibly handle the case where this keyboard needs an enter
-	// right away
+	// send an enter event to the focused surface
+	struct wlr_seat_client *focused_client =
+		seat_client->seat->keyboard_state.focused_client;
+	struct wlr_surface *focused_surface =
+		seat_client->seat->keyboard_state.focused_surface;
+
+	if (focused_client && focused_surface) {
+		struct wl_array keys;
+		wl_array_init(&keys);
+		uint32_t serial = wlr_seat_client_next_serial(focused_client);
+		struct wl_resource *resource;
+		wl_resource_for_each(resource, &focused_client->keyboards) {
+			if (wl_resource_get_id(resource) == id) {
+				if (seat_client_from_keyboard_resource(resource) == NULL) {
+					continue;
+				}
+				wlr_log(WLR_ERROR, "ENTER!!!");
+				wl_keyboard_send_enter(resource, serial,
+						focused_surface->resource, &keys);
+			}
+		}
+		wl_array_release(&keys);
+	}
 }
 
 void seat_client_destroy_keyboard(struct wl_resource *resource) {
