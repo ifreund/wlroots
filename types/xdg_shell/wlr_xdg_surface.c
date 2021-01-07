@@ -642,7 +642,7 @@ static void xdg_surface_for_each_surface(struct wlr_xdg_surface *surface,
 	}
 }
 
-static void xdg_surface_for_each_popup(struct wlr_xdg_surface *surface,
+static void xdg_surface_for_each_popup_surface(struct wlr_xdg_surface *surface,
 		int x, int y, wlr_surface_iterator_func_t iterator, void *user_data) {
 	struct wlr_xdg_popup *popup_state;
 	wl_list_for_each(popup_state, &surface->popups, link) {
@@ -653,9 +653,16 @@ static void xdg_surface_for_each_popup(struct wlr_xdg_surface *surface,
 
 		double popup_sx, popup_sy;
 		xdg_popup_get_position(popup_state, &popup_sx, &popup_sy);
-		iterator(popup->surface, x + popup_sx, y + popup_sy, user_data);
 
-		xdg_surface_for_each_popup(popup,
+		struct xdg_surface_iterator_data data = {
+			.user_iterator = iterator,
+			.user_data = user_data,
+			.x = x + popup_sx, .y = y + popup_sy,
+		};
+		wlr_surface_for_each_surface(popup->surface, xdg_surface_iterator,
+			&data);
+
+		xdg_surface_for_each_popup_surface(popup,
 			x + popup_sx,
 			y + popup_sy,
 			iterator, user_data);
@@ -667,9 +674,23 @@ void wlr_xdg_surface_for_each_surface(struct wlr_xdg_surface *surface,
 	xdg_surface_for_each_surface(surface, 0, 0, iterator, user_data);
 }
 
-void wlr_xdg_surface_for_each_popup(struct wlr_xdg_surface *surface,
+
+void wlr_xdg_surface_for_each_popup_surface(struct wlr_xdg_surface *surface,
 		wlr_surface_iterator_func_t iterator, void *user_data) {
-	xdg_surface_for_each_popup(surface, 0, 0, iterator, user_data);
+	xdg_surface_for_each_popup_surface(surface, 0, 0, iterator, user_data);
+}
+
+void wlr_xdg_surface_for_each_popup(struct wlr_xdg_surface *surface,
+		wlr_xdg_popup_iterator_func_t iterator, void *user_data) {
+	struct wlr_xdg_popup *popup;
+	wl_list_for_each(popup, &surface->popups, link) {
+		struct wlr_xdg_surface *popup_surface = popup->base;
+		if (!popup_surface->configured) {
+			continue;
+		}
+		iterator(popup, user_data);
+		wlr_xdg_surface_for_each_popup(popup_surface, iterator, user_data);
+	}
 }
 
 void wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *surface,
